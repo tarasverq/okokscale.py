@@ -1,2 +1,2 @@
-bleak==3.0.2
-bluetooth_sensor_state_data==1.9.0
+bleak>=3.0.2
+bluetooth_sensor_state_data>=1.9.0
