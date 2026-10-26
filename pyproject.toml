@@ -348,6 +348,7 @@ max-line-length-suggestions = 72
 [tool.mypy]
 python_version = "3.14"
 packages = ["okokscale"]
+strict = true
 
 [[tool.mypy.overrides]]
 module = ["*._version"]
