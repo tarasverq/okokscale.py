@@ -44,6 +44,7 @@ OKOK_C0_SERVICE_INFO = BluetoothServiceInfo(
     address=OKOK_C0_ADDRESS,
     rssi=-62,
     manufacturer_data={
+        0x26C0: bytes.fromhex("000017700a013080f416abcdef"),
         11200: bytes.fromhex("064817700a013180f416abcdef"),
         39104: bytes.fromhex("000017700a013080f416abcdef"),
         42688: bytes.fromhex("000017700a013080f416abcdef"),

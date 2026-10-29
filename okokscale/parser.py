@@ -71,6 +71,10 @@ IDX_VF0_WEIGHT_MSB = 3
 IDX_VF0_WEIGHT_LSB = 2
 
 
+def _is_c0(manufacturer_data: dict[int, bytes]) -> bool:
+    return any(key & 0xFF == MANUFACTURER_DATA_ID_VC0 for key in manufacturer_data)
+
+
 class OKOKScaleBluetoothDeviceData(BluetoothData):
     """Data for OKOK Scale sensors."""
 
@@ -87,14 +91,13 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
         if _LOGGER.isEnabledFor(logging.DEBUG):
             self.log_service_info(data)
 
-        manufacturer_data_key_lsbs = [key & 0xFF for key in data.manufacturer_data]
         if not (
             # MANUFACTURER_DATA_ID_V10 in data.manufacturer_data or
             MANUFACTURER_DATA_ID_V11 in data.manufacturer_data
             or MANUFACTURER_DATA_ID_V20 in data.manufacturer_data
             # or MANUFACTURER_DATA_ID_V26 in data.manufacturer_data
             or MANUFACTURER_DATA_ID_VF0 in data.manufacturer_data
-            or MANUFACTURER_DATA_ID_VC0 in manufacturer_data_key_lsbs
+            or _is_c0(data.manufacturer_data)
         ):
             _LOGGER.info(
                 "Manufacturer data not found for %s; ids=%s",
@@ -113,14 +116,13 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
 
     def supported(self, data: BluetoothServiceInfo) -> bool:
         """Return True if the device is supported."""
-        manufacturer_data_key_lsbs = [key & 0xFF for key in data.manufacturer_data]
         if not (
             # MANUFACTURER_DATA_ID_V10 in data.manufacturer_data or
             MANUFACTURER_DATA_ID_V11 in data.manufacturer_data
             or MANUFACTURER_DATA_ID_V20 in data.manufacturer_data
             # or MANUFACTURER_DATA_ID_V26 in data.manufacturer_data
             or MANUFACTURER_DATA_ID_VF0 in data.manufacturer_data
-            or MANUFACTURER_DATA_ID_VC0 in manufacturer_data_key_lsbs
+            or _is_c0(data.manufacturer_data)
         ):
             return False
         return super().supported(data)
@@ -243,18 +245,13 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
 
     def process_manufacturer_data(self, manufacturer_data: dict[int, bytes]) -> None:
         """Process manufacturer data."""
-        if MANUFACTURER_DATA_ID_V10 in manufacturer_data:
-            return
-        if MANUFACTURER_DATA_ID_V26 in manufacturer_data:
-            return
-
         if MANUFACTURER_DATA_ID_V11 in manufacturer_data:
             self._process_manufacturer_data_v11(manufacturer_data)
         elif MANUFACTURER_DATA_ID_V20 in manufacturer_data:
             self._process_manufacturer_data_v20(manufacturer_data)
         elif MANUFACTURER_DATA_ID_VF0 in manufacturer_data:
             self._process_manufacturer_data_vf0(manufacturer_data)
-        else:
+        elif _is_c0(manufacturer_data):
             self._process_manufacturer_data_vc0(manufacturer_data)
 
     def _process_manufacturer_data_v11(
