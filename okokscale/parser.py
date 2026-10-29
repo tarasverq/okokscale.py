@@ -1,10 +1,10 @@
-"""
-Parser for OKOK scale BLE advertisements.
-"""
+"""Parser for OKOK scale BLE advertisements."""
 
 import logging
 
-from bleak import AdvertisementData, BleakClient, BLEDevice
+from bleak import BleakClient
+from bleak.backends.device import BLEDevice
+from bleak.backends.scanner import AdvertisementData
 from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 from bluetooth_data_tools import human_readable_name
 from bluetooth_sensor_state_data import BluetoothData
@@ -82,38 +82,34 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
 
     supports_impedance = False
 
-    def _start_update(self, service_info: BluetoothServiceInfo) -> None:
+    def _start_update(self, data: BluetoothServiceInfo) -> None:
         """Update from BLE advertisement data."""
         if _LOGGER.isEnabledFor(logging.DEBUG):
-            self.log_service_info(service_info)
+            self.log_service_info(data)
 
-        manufacturer_data_key_lsbs = [
-            key & 0xFF for key in service_info.manufacturer_data
-        ]
+        manufacturer_data_key_lsbs = [key & 0xFF for key in data.manufacturer_data]
         if not (
-            # MANUFACTURER_DATA_ID_V10 in service_info.manufacturer_data or
-            MANUFACTURER_DATA_ID_V11 in service_info.manufacturer_data
-            or MANUFACTURER_DATA_ID_V20 in service_info.manufacturer_data
-            # or MANUFACTURER_DATA_ID_V26 in service_info.manufacturer_data
-            or MANUFACTURER_DATA_ID_VF0 in service_info.manufacturer_data
+            # MANUFACTURER_DATA_ID_V10 in data.manufacturer_data or
+            MANUFACTURER_DATA_ID_V11 in data.manufacturer_data
+            or MANUFACTURER_DATA_ID_V20 in data.manufacturer_data
+            # or MANUFACTURER_DATA_ID_V26 in data.manufacturer_data
+            or MANUFACTURER_DATA_ID_VF0 in data.manufacturer_data
             or MANUFACTURER_DATA_ID_VC0 in manufacturer_data_key_lsbs
         ):
             _LOGGER.info(
                 "Manufacturer data not found for %s; ids=%s",
-                service_info.address,
-                list(service_info.manufacturer_data.keys()),
+                data.address,
+                list(data.manufacturer_data.keys()),
             )
             return
 
         self.set_device_manufacturer("OKOK")
         self.set_device_type("OKOK Scale")
-        self.name = human_readable_name(
-            "OKOK Scale", service_info.name, service_info.address
-        )
+        self.name = human_readable_name("OKOK Scale", data.name, data.address)
         self.set_device_name(self.name)
         self.set_title(self.name)
 
-        self.process_manufacturer_data(service_info.manufacturer_data)
+        self.process_manufacturer_data(data.manufacturer_data)
 
     def supported(self, data: BluetoothServiceInfo) -> bool:
         """Return True if the device is supported."""
@@ -132,7 +128,8 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
     def poll_needed(
         self, service_info: BluetoothServiceInfo, last_poll: float | None
     ) -> bool:
-        """
+        """Return True if we need to poll the battery percentage.
+
         This is called every time we get a service_info for a device. It means the
         device is working and online.
         """
@@ -140,7 +137,8 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
             return True
         return last_poll > UPDATE_INTERVAL_SECONDS
 
-    async def connect(self, ble_device: BLEDevice):
+    async def connect(self, ble_device: BLEDevice) -> BleakClient:
+        """Connect client."""
         if self._client and self._client.is_connected:
             _LOGGER.debug("Already connected to %s", self.name)
             return self._client
@@ -160,7 +158,8 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
 
         return client
 
-    async def disconnect(self):
+    async def disconnect(self) -> None:
+        """Disconnect client."""
         if self._client and self._client.is_connected:
             self._expected_disconnect = True
             await self._client.disconnect()
@@ -176,9 +175,7 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
     async def async_poll(
         self, ble_device: BLEDevice, advertisement_data: AdvertisementData
     ) -> SensorUpdate:
-        """
-        Poll the device to retrieve any values we can't get from passive listening.
-        """
+        """Poll the device to retrieve any values we can't get from passive listening."""
         try:
             client = await self.connect(ble_device)
             if _LOGGER.isEnabledFor(logging.DEBUG):
@@ -200,18 +197,17 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
                 control_bytes = (
                     body_composition_payload[1] << 8
                 ) | body_composition_payload[0]
-                partial = (control_bytes & 1024) > 0
+                # partial = (control_bytes & 1024) > 0
                 in_pounds = (control_bytes & 256) > 0
-                finished = (control_bytes & 128) > 0
+                # finished = (control_bytes & 128) > 0
                 in_jin = (control_bytes & 64) > 0
-                weight_stabilized = (control_bytes & 32) > 0
-                impedance_stabilized = (control_bytes & 2) > 0
+                # weight_stabilized = (control_bytes & 32) > 0
+                # impedance_stabilized = (control_bytes & 2) > 0
 
                 if not in_pounds and not in_jin:
                     msb = body_composition_payload[12]
                     lsb = body_composition_payload[11]
-                    weight = msb << 8 | lsb
-                    weight = weight / 10
+                    weight = (msb << 8 | lsb) / 10.0
                     _LOGGER.debug("Weight: %.2f kg", weight)
 
                     self.update_predefined_sensor(
@@ -245,7 +241,8 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
 
         return self._finish_update()
 
-    def process_manufacturer_data(self, manufacturer_data):
+    def process_manufacturer_data(self, manufacturer_data: dict[int, bytes]) -> None:
+        """Process manufacturer data."""
         if MANUFACTURER_DATA_ID_V10 in manufacturer_data:
             return
         if MANUFACTURER_DATA_ID_V26 in manufacturer_data:
@@ -260,7 +257,9 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
         else:
             self._process_manufacturer_data_vc0(manufacturer_data)
 
-    def _process_manufacturer_data_v11(self, manufacturer_data):
+    def _process_manufacturer_data_v11(
+        self, manufacturer_data: dict[int, bytes]
+    ) -> None:
         data = manufacturer_data[MANUFACTURER_DATA_ID_V11]
         if data is None or len(data) != IDX_V11_CHECKSUM + 6 + 1:
             _LOGGER.error(
@@ -277,7 +276,7 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
         checksum = (
             0xCA ^ 0x11
         )  # Version and magic fields are part of the checksum, but not in array
-        for i in range(0, IDX_V11_CHECKSUM - 1):
+        for i in range(IDX_V11_CHECKSUM - 1):
             checksum ^= data[i]
         if data[IDX_V11_CHECKSUM] != checksum:
             _LOGGER.error(
@@ -291,7 +290,7 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
         divider = 10.0
         msb = data[IDX_V11_WEIGHT_MSB]
         lsb = data[IDX_V11_WEIGHT_LSB]
-        weight = msb << 8 | lsb
+        weight: float = msb << 8 | lsb
 
         match (data[IDX_V11_BODY_PROPERTIES] >> 1) & 3:
             case 0:
@@ -321,13 +320,17 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
                 pounds = lsb / divider
                 weight = pounds + (stones * 14)
                 base_description = SensorLibrary.MASS__MASS_POUNDS
-        _LOGGER.debug(
-            "Weight: %.2f %s", weight, base_description.native_unit_of_measurement
-        )
 
-        self.update_predefined_sensor(base_description, weight)
+        if base_description is not None:
+            _LOGGER.debug(
+                "Weight: %.2f %s", weight, base_description.native_unit_of_measurement
+            )
 
-    def _process_manufacturer_data_v20(self, manufacturer_data):
+            self.update_predefined_sensor(base_description, weight)
+
+    def _process_manufacturer_data_v20(
+        self, manufacturer_data: dict[int, bytes]
+    ) -> None:
         data = manufacturer_data[MANUFACTURER_DATA_ID_V20]
         if data is None or len(data) != 19:
             _LOGGER.error("Data length error, got %d, expected 19", len(data))
@@ -338,7 +341,7 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
             return
 
         checksum = 0x20  # Version field is part of the checksum, but not in array
-        for i in range(0, IDX_V20_CHECKSUM - 1):
+        for i in range(IDX_V20_CHECKSUM - 1):
             checksum ^= data[i]
         if data[IDX_V20_CHECKSUM] != checksum:
             _LOGGER.error(
@@ -354,21 +357,21 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
             divider = 100.0
         msb = data[IDX_V20_WEIGHT_MSB]
         lsb = data[IDX_V20_WEIGHT_LSB]
-        weight = msb << 8 | lsb
-        weight = weight / divider
+        weight = (msb << 8 | lsb) / divider
         _LOGGER.debug("Weight: %.2f kg", weight)
 
         # Reading the impedance
         msb = data[IDX_V20_IMPEDANCE_MSB]
         lsb = data[IDX_V20_IMPEDANCE_LSB]
-        impedance = msb << 8 | lsb
-        impedance = impedance / 10.0
+        impedance = (msb << 8 | lsb) / 10.0
         _LOGGER.debug("Impedance: %.1f Ω", impedance)
 
         self.update_predefined_sensor(SensorLibrary.MASS__MASS_KILOGRAMS, weight)
         self.update_predefined_sensor(SensorLibrary.IMPEDANCE__OHM, impedance)
 
-    def _process_manufacturer_data_vc0(self, manufacturer_data):
+    def _process_manufacturer_data_vc0(
+        self, manufacturer_data: dict[int, bytes]
+    ) -> None:
         data = None
         final = False
         for key, _data in manufacturer_data.items():
@@ -396,7 +399,7 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
         # Reading the weight
         msb = data[IDX_VC0_WEIGHT_MSB]
         lsb = data[IDX_VC0_WEIGHT_LSB]
-        weight = msb << 8 | lsb
+        weight: float = msb << 8 | lsb
 
         base_description = None
         match data[IDX_VC0_BODY_PROPERTIES] >> 3 & 0x3:
@@ -411,14 +414,17 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
                 pounds = lsb / 10.0
                 weight = pounds + (stones * 14)
                 base_description = SensorLibrary.MASS__MASS_POUNDS
-        _LOGGER.debug(
-            "Weight: %.2f %s", weight, base_description.native_unit_of_measurement
-        )
 
-        if base_description:
+        if base_description is not None:
+            _LOGGER.debug(
+                "Weight: %.2f %s", weight, base_description.native_unit_of_measurement
+            )
+
             self.update_predefined_sensor(base_description, weight)
 
-    def _process_manufacturer_data_vf0(self, manufacturer_data):
+    def _process_manufacturer_data_vf0(
+        self, manufacturer_data: dict[int, bytes]
+    ) -> None:
         data = manufacturer_data[MANUFACTURER_DATA_ID_VF0]
         if len(data) != 18:
             _LOGGER.error("Data length error, got %d, expected 18", len(data))
@@ -427,13 +433,13 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
         # Reading the weight
         msb = data[IDX_VF0_WEIGHT_MSB]
         lsb = data[IDX_VF0_WEIGHT_LSB]
-        weight = msb << 8 | lsb
-        weight = weight / 10.0
+        weight = (msb << 8 | lsb) / 10.0
         _LOGGER.debug("Weight: %.1f kg", weight)
 
         self.update_predefined_sensor(SensorLibrary.MASS__MASS_KILOGRAMS, weight)
 
-    def log_service_info(self, service_info: BluetoothServiceInfo):
+    def log_service_info(self, service_info: BluetoothServiceInfo) -> None:
+        """Log log service_info for debugging."""
         _LOGGER.debug("Device Name: %s", service_info.name)
         _LOGGER.debug("Device Address: %s", service_info.address)
         _LOGGER.debug("Device RSSI: %s", service_info.rssi)
@@ -448,14 +454,14 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
                 _LOGGER.debug("Service Data %s: 0x%s", service_id, data.hex())
             except UnicodeDecodeError:
                 _LOGGER.debug("Service Data %s: 0x%s", service_id, data.hex())
-            except Exception:
+            except Exception:  # ruff: ignore[BLE001]
                 pass
 
         _LOGGER.debug("Service UUIDs: %s", service_info.service_uuids)
 
-    def log_manufacturer_data(self, manufacturer_data):
-        for manufacturer_id in manufacturer_data:
-            data = manufacturer_data[manufacturer_id]
+    def log_manufacturer_data(self, manufacturer_data: dict[int, bytes]) -> None:
+        """Log manufacturer data for debugging."""
+        for manufacturer_id, data in manufacturer_data.items():
             _LOGGER.debug(
                 "Manufacturer Identifier: %s (%d)",
                 hex(manufacturer_id),
@@ -467,19 +473,29 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
                 _LOGGER.debug("Manufacturer Data: 0x%s", data.hex())
             except UnicodeDecodeError:
                 _LOGGER.debug("Manufacturer Data: 0x%s", data.hex())
-            except Exception:
+            except Exception:  # ruff: ignore[BLE001]
                 pass
 
-    async def log_client(self, client):
-        # Log characteristics for debugging
-        for i in client.services.characteristics:
+    async def log_client(self, client: BleakClient) -> None:
+        """Log client characteristics for debugging."""
+        for characteristic in client.services.characteristics.values():
             try:
-                characteristic = client.services.characteristics[i]
                 gatt_char = client.services.get_characteristic(characteristic.uuid)
+                if gatt_char is None:
+                    continue
+
                 payload = await client.read_gatt_char(gatt_char)
                 _LOGGER.debug("client.services %s: %s", gatt_char, payload.decode())
                 _LOGGER.debug("client.services %s: 0x%s", gatt_char, payload.hex())
             except UnicodeDecodeError:
                 _LOGGER.debug("client.services %s: 0x%s", gatt_char, payload.hex())
-            except Exception:
+            except Exception:  # ruff: ignore[BLE001]
                 pass
+
+
+__all__ = [
+    "OKOKScaleBluetoothDeviceData",
+    "SensorDeviceClass",
+    "SensorUpdate",
+    "Units",
+]
