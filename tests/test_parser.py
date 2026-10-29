@@ -1,6 +1,5 @@
-import pytest
-from habluetooth.models import BluetoothServiceInfo
-from sensor_state_data.device import DeviceKey
+from bluetooth_sensor_state_data import BluetoothServiceInfo
+from sensor_state_data import DeviceKey
 
 from okokscale.parser import OKOKScaleBluetoothDeviceData
 
@@ -45,6 +44,7 @@ OKOK_C0_SERVICE_INFO = BluetoothServiceInfo(
     address=OKOK_C0_ADDRESS,
     rssi=-62,
     manufacturer_data={
+        0x26C0: bytes.fromhex("000017700a013080f416abcdef"),
         11200: bytes.fromhex("064817700a013180f416abcdef"),
         39104: bytes.fromhex("000017700a013080f416abcdef"),
         42688: bytes.fromhex("000017700a013080f416abcdef"),
@@ -55,7 +55,6 @@ OKOK_C0_SERVICE_INFO = BluetoothServiceInfo(
     service_uuids=[],
     source="local",
 )
-
 
 # A C0 family scale set to kg. Properties byte 0x25: unit bits 00 (kg),
 # decimals bits 10 (two), measurement bit set. Display read 86.00 kg.
@@ -72,18 +71,35 @@ OKOK_C0_KG_SERVICE_INFO = BluetoothServiceInfo(
     source="local",
 )
 
+# The same frame with the decimals bits set to one decimal instead of
+# two (properties 0x25 -> 0x21).
+OKOK_C0_KG_ONE_DECIMAL_SERVICE_INFO = BluetoothServiceInfo(
+    name=OKOK_C0_KG_ADDRESS,
+    address=OKOK_C0_KG_ADDRESS,
+    rssi=-70,
+    manufacturer_data={
+        12736: bytes.fromhex("035c17700a01217866a5e0a60f"),
+    },
+    service_data={},
+    service_uuids=[],
+    source="local",
+)
+
+
+def test_can_create():
+    OKOKScaleBluetoothDeviceData()
+
 
 def test_unsupported_service_info() -> None:
     bt_device_data = OKOKScaleBluetoothDeviceData()
     result = bt_device_data.supported(UNSUPPORTED_SERVICE_INFO)
-    assert result == False
+    assert result is False
 
 
 def test_f0_service_info() -> None:
     bt_device_data = OKOKScaleBluetoothDeviceData()
 
-    result = bt_device_data.supported(OKOK_F0_SERVICE_INFO)
-    assert result == True
+    assert bt_device_data.supported(OKOK_F0_SERVICE_INFO)
 
     sensor_update = bt_device_data.update(OKOK_F0_SERVICE_INFO)
 
@@ -109,8 +125,7 @@ def test_f0_service_info() -> None:
 def test_20_service_info() -> None:
     bt_device_data = OKOKScaleBluetoothDeviceData()
 
-    result = bt_device_data.supported(OKOK_20_SERVICE_INFO)
-    assert result == True
+    assert bt_device_data.supported(OKOK_20_SERVICE_INFO)
 
     sensor_update = bt_device_data.update(OKOK_20_SERVICE_INFO)
 
@@ -136,8 +151,7 @@ def test_20_service_info() -> None:
 def test_c0_service_info() -> None:
     bt_device_data = OKOKScaleBluetoothDeviceData()
 
-    result = bt_device_data.supported(OKOK_C0_SERVICE_INFO)
-    assert result == True
+    assert bt_device_data.supported(OKOK_C0_SERVICE_INFO)
 
     sensor_update = bt_device_data.update(OKOK_C0_SERVICE_INFO)
 
@@ -172,21 +186,6 @@ def test_c0_kg_service_info() -> None:
     assert entity_description.native_unit_of_measurement == "kg"
     entity_value = sensor_update.entity_values[DeviceKey("mass")]
     assert entity_value.native_value == 86.0
-
-# Constructed, not captured: the same frame with the decimals bits set to one
-# decimal instead of two (properties 0x25 -> 0x21). No device of mine sends
-# this, it exercises the branch the vendor's own parser takes.
-OKOK_C0_KG_ONE_DECIMAL_SERVICE_INFO = BluetoothServiceInfo(
-    name=OKOK_C0_KG_ADDRESS,
-    address=OKOK_C0_KG_ADDRESS,
-    rssi=-70,
-    manufacturer_data={
-        12736: bytes.fromhex("035c17700a01217866a5e0a60f"),
-    },
-    service_data={},
-    service_uuids=[],
-    source="local",
-)
 
 
 def test_c0_kg_one_decimal_service_info() -> None:
