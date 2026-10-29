@@ -1,6 +1,5 @@
-import pytest
-from habluetooth.models import BluetoothServiceInfo
-from sensor_state_data.device import DeviceKey
+from bluetooth_sensor_state_data import BluetoothServiceInfo
+from sensor_state_data import DeviceKey
 
 from okokscale.parser import OKOKScaleBluetoothDeviceData
 
@@ -57,17 +56,21 @@ OKOK_C0_SERVICE_INFO = BluetoothServiceInfo(
 )
 
 
+def test_can_create():
+    OKOKScaleBluetoothDeviceData()
+
+
 def test_unsupported_service_info() -> None:
     bt_device_data = OKOKScaleBluetoothDeviceData()
     result = bt_device_data.supported(UNSUPPORTED_SERVICE_INFO)
-    assert result == False
+    assert result is False
 
 
 def test_f0_service_info() -> None:
     bt_device_data = OKOKScaleBluetoothDeviceData()
 
     result = bt_device_data.supported(OKOK_F0_SERVICE_INFO)
-    assert result == True
+    assert result is True
 
     sensor_update = bt_device_data.update(OKOK_F0_SERVICE_INFO)
 
@@ -94,7 +97,7 @@ def test_20_service_info() -> None:
     bt_device_data = OKOKScaleBluetoothDeviceData()
 
     result = bt_device_data.supported(OKOK_20_SERVICE_INFO)
-    assert result == True
+    assert result is True
 
     sensor_update = bt_device_data.update(OKOK_20_SERVICE_INFO)
 
@@ -121,7 +124,7 @@ def test_c0_service_info() -> None:
     bt_device_data = OKOKScaleBluetoothDeviceData()
 
     result = bt_device_data.supported(OKOK_C0_SERVICE_INFO)
-    assert result == True
+    assert result is True
 
     sensor_update = bt_device_data.update(OKOK_C0_SERVICE_INFO)
 
