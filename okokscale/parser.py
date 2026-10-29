@@ -246,9 +246,20 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
         return self._finish_update()
 
     def process_manufacturer_data(self, manufacturer_data):
+        # A C0 family scale cycles its manufacturer id through the whole
+        # 0x00C0..0xFFC0 range, one id per advertisement. Home Assistant merges
+        # the manufacturer data of all advertisements it has seen for a device,
+        # so after a few seconds the merged dict holds most of that range,
+        # including 0x26C0 - which is also MANUFACTURER_DATA_ID_V26. Returning
+        # here would then silently disable the device for good. More than one
+        # id ending in 0xC0 can only come from a C0 family device.
+        c0_ids = sum(
+            1 for key in manufacturer_data if key & 0xFF == MANUFACTURER_DATA_ID_VC0
+        )
+
         if MANUFACTURER_DATA_ID_V10 in manufacturer_data:
             return
-        if MANUFACTURER_DATA_ID_V26 in manufacturer_data:
+        if MANUFACTURER_DATA_ID_V26 in manufacturer_data and c0_ids <= 1:
             return
 
         if MANUFACTURER_DATA_ID_V11 in manufacturer_data:

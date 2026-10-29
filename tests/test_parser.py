@@ -57,6 +57,28 @@ OKOK_C0_SERVICE_INFO = BluetoothServiceInfo(
 )
 
 
+# Real advertisements from a scale that cycles its manufacturer id through the
+# whole 0x00C0..0xFFC0 range. 0x26C0 (9920) is part of that range and is also
+# MANUFACTURER_DATA_ID_V26, so a merged advertisement cache always ends up
+# holding it.
+OKOK_C0_ROLLING_ADDRESS = "78:66:A5:E0:A6:0F"
+OKOK_C0_ROLLING_TITLE = "OKOK Scale (A60F)"
+OKOK_C0_ROLLING_SERVICE_INFO = BluetoothServiceInfo(
+    name=OKOK_C0_ROLLING_ADDRESS,
+    address=OKOK_C0_ROLLING_ADDRESS,
+    rssi=-73,
+    manufacturer_data={
+        8896: bytes.fromhex("000017700a01307866a5e0a60f"),
+        9664: bytes.fromhex("00e617700a01317866a5e0a60f"),
+        9920: bytes.fromhex("00e617700a01317866a5e0a60f"),
+        10176: bytes.fromhex("000017700a01307866a5e0a60f"),
+    },
+    service_data={},
+    service_uuids=[],
+    source="local",
+)
+
+
 def test_unsupported_service_info() -> None:
     bt_device_data = OKOKScaleBluetoothDeviceData()
     result = bt_device_data.supported(UNSUPPORTED_SERVICE_INFO)
@@ -142,3 +164,18 @@ def test_c0_service_info() -> None:
     assert entity_description.native_unit_of_measurement == "dBm"
     entity_value = sensor_update.entity_values[DeviceKey("signal_strength")]
     assert entity_value.native_value == -62
+
+
+def test_c0_rolling_manufacturer_id_service_info() -> None:
+    """0x26C0 in the merged data must not disable a C0 family scale."""
+    bt_device_data = OKOKScaleBluetoothDeviceData()
+
+    assert bt_device_data.supported(OKOK_C0_ROLLING_SERVICE_INFO) is True
+
+    sensor_update = bt_device_data.update(OKOK_C0_ROLLING_SERVICE_INFO)
+
+    assert sensor_update.title == OKOK_C0_ROLLING_TITLE
+    assert DeviceKey("mass") in sensor_update.entity_descriptions
+
+    entity_value = sensor_update.entity_values[DeviceKey("mass")]
+    assert entity_value.native_value == 23.0
