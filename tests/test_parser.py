@@ -57,6 +57,22 @@ OKOK_C0_SERVICE_INFO = BluetoothServiceInfo(
 )
 
 
+# A C0 family scale set to kg. Properties byte 0x25: unit bits 00 (kg),
+# decimals bits 10 (two), measurement bit set. Display read 86.00 kg.
+OKOK_C0_KG_ADDRESS = "78:66:A5:E0:A6:0F"
+OKOK_C0_KG_SERVICE_INFO = BluetoothServiceInfo(
+    name=OKOK_C0_KG_ADDRESS,
+    address=OKOK_C0_KG_ADDRESS,
+    rssi=-70,
+    manufacturer_data={
+        12736: bytes.fromhex("219817700a01257866a5e0a60f"),
+    },
+    service_data={},
+    service_uuids=[],
+    source="local",
+)
+
+
 def test_unsupported_service_info() -> None:
     bt_device_data = OKOKScaleBluetoothDeviceData()
     result = bt_device_data.supported(UNSUPPORTED_SERVICE_INFO)
@@ -142,3 +158,44 @@ def test_c0_service_info() -> None:
     assert entity_description.native_unit_of_measurement == "dBm"
     entity_value = sensor_update.entity_values[DeviceKey("signal_strength")]
     assert entity_value.native_value == -62
+
+
+def test_c0_kg_service_info() -> None:
+    """kg with two decimals: the divider comes from the properties byte."""
+    bt_device_data = OKOKScaleBluetoothDeviceData()
+
+    assert bt_device_data.supported(OKOK_C0_KG_SERVICE_INFO) is True
+
+    sensor_update = bt_device_data.update(OKOK_C0_KG_SERVICE_INFO)
+
+    entity_description = sensor_update.entity_descriptions[DeviceKey("mass")]
+    assert entity_description.native_unit_of_measurement == "kg"
+    entity_value = sensor_update.entity_values[DeviceKey("mass")]
+    assert entity_value.native_value == 86.0
+
+# Constructed, not captured: the same frame with the decimals bits set to one
+# decimal instead of two (properties 0x25 -> 0x21). No device of mine sends
+# this, it exercises the branch the vendor's own parser takes.
+OKOK_C0_KG_ONE_DECIMAL_SERVICE_INFO = BluetoothServiceInfo(
+    name=OKOK_C0_KG_ADDRESS,
+    address=OKOK_C0_KG_ADDRESS,
+    rssi=-70,
+    manufacturer_data={
+        12736: bytes.fromhex("035c17700a01217866a5e0a60f"),
+    },
+    service_data={},
+    service_uuids=[],
+    source="local",
+)
+
+
+def test_c0_kg_one_decimal_service_info() -> None:
+    """kg with one decimal must not be divided by 100."""
+    bt_device_data = OKOKScaleBluetoothDeviceData()
+
+    sensor_update = bt_device_data.update(OKOK_C0_KG_ONE_DECIMAL_SERVICE_INFO)
+
+    entity_description = sensor_update.entity_descriptions[DeviceKey("mass")]
+    assert entity_description.native_unit_of_measurement == "kg"
+    entity_value = sensor_update.entity_values[DeviceKey("mass")]
+    assert entity_value.native_value == 86.0

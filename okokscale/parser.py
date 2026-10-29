@@ -397,14 +397,19 @@ class OKOKScaleBluetoothDeviceData(BluetoothData):
         msb = data[IDX_VC0_WEIGHT_MSB]
         lsb = data[IDX_VC0_WEIGHT_LSB]
         weight = msb << 8 | lsb
+        properties = data[IDX_VC0_BODY_PROPERTIES]
+
+        # Bits 2-1 carry the number of decimals and are independent of the unit
+        # in bits 4-3, so the divider is read rather than assumed per unit.
+        divider = {1: 1.0, 2: 100.0}.get((properties >> 1) & 0x3, 10.0)
 
         base_description = None
-        match data[IDX_VC0_BODY_PROPERTIES] >> 3 & 0x3:
+        match properties >> 3 & 0x3:
             case 0:  # kg
-                weight = weight / 100.0
+                weight = weight / divider
                 base_description = SensorLibrary.MASS__MASS_KILOGRAMS
             case 2:  # lb
-                weight = weight / 10.0
+                weight = weight / divider
                 base_description = SensorLibrary.MASS__MASS_POUNDS
             case 3:  # st:lb
                 stones = msb
